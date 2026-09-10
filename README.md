@@ -15,14 +15,14 @@
 - Open Source and FREE
 - Make custom categories / tiers
 - Add images from file
-- Import image directly from URL
 - Full drag and drop support
 - Easily arrange the content
 - Customise colors and text
 - Full screen mode
-- Save the data as file and reuse
 
 ### New in the Mod (PLUS) ✨
+- 💾 **Save the data** as file and reuse
+- 🔗 **Import image** directly from URL
 - 🖼️ **Image captions** — add a caption to every image
 - 🔍 **View image in full size** — double click to open in a separate window
 - 📐 **Individual image size** — original or custom px
