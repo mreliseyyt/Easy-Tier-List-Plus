@@ -50,10 +50,10 @@
   
 ![image](https://github.com/mreliseyyt/Easy-Tier-List-Plus/blob/main/screenshot.png)
 
-![Recording](https://github.com/mreliseyyt/Easy-Tier-List-Plus/blob/main/demo.gif)
+![Recording](https://github.com/Akascape/Easy-Tier-List/assets/89206401/2a31411d-7237-4e00-b50b-c1e28dc805fc)
 
 **EXPORTED IMAGE**
-![untitled](https://github.com/mreliseyyt/Easy-Tier-List-Plus/blob/main/exported.png)
+![untitled](https://github.com/Akascape/Easy-Tier-List/assets/89206401/9478a912-d65c-4aa0-99e5-0f0a042c2b4d)
 </div>
 
 ## Hotkeys ⌨️
