@@ -124,9 +124,9 @@ MIT License — free to use, modify and distribute.
 
 ## Authors
 <br>
-Original author: [`Akascape`](https://github.com/Akascape)
+Original author: [Akascape](https://github.com/Akascape)
 <br>
-Mod author: [`mreliseyyt`](https://github.com/mreliseyyt)
+Mod author: [mreliseyyt](https://github.com/mreliseyyt)
 <br>
 
 <br>**Follow me for more projects:** [`mreliseyyt`](https://github.com/mreliseyyt)
