@@ -1,6 +1,6 @@
 <div align="center">
   
-![thumbnail](https://github.com/Akascape/Easy-Tier-List/assets/89206401/38ab6f2d-f625-498a-ba19-b5cf03352068)
+![thumbnail](https://github.com/mreliseyyt/Easy-Tier-List-Plus/banner.png)
 
 **Want to make a quick tier list? Here is a good application called Easy-Tier-List which can help you make it!**
 
