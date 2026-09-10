@@ -1,6 +1,6 @@
 <div align="center">
   
-![thumbnail](https://github.com/mreliseyyt/Easy-Tier-List-Plus/banner.png)
+![thumbnail](https://github.com/mreliseyyt/Easy-Tier-List-Plus/blob/main/banner.png)
 
 **Want to make a quick tier list? Here is a good application called Easy-Tier-List which can help you make it!**
 
