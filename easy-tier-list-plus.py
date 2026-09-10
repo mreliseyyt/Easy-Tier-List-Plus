@@ -1,10 +1,10 @@
 import customtkinter
 import tkinter
 import tkinter.font
+from tkinter import colorchooser
 from PIL import Image, ImageTk, ImageGrab
 from CTkMenuBar import *
 from tkinter import filedialog
-from CTkColorPicker import *
 from CTkMessagebox import *
 from tkinterdnd2 import TkinterDnD, DND_ALL
 import os
@@ -17,6 +17,7 @@ import sys
 import base64
 import tempfile
 import atexit
+import time
 
 platform = sys.platform
 if platform.startswith("win"):
@@ -83,6 +84,7 @@ T = {
         "choose_main_bg": "Choose main background color",
         "choose_txt": "Choose text color", "no_caption": "(no caption)",
         "original": "original", "tierlist": "TIERLIST",
+        "exporting": "Exporting...",
         "about_text": (
             "Easy-Tier-List-Plus\n"
             "Original author: Akash Bora\n"
@@ -97,10 +99,11 @@ T = {
             "• Save entire tierlist as .tierlist (Base64 embedded)\n"
             "• Horizontal scroll inside every category\n"
             "• Drag & Drop items between categories\n"
+            "• Delete items via right-click or Del key\n"
+            "• Export full tierlist (all categories) to PNG\n"
             "• Global image size slider\n"
             "• Custom font (family, size, bold, italic, underline)\n"
             "• Custom color scheme (categories / background / text)\n"
-            "• Screenshot export to PNG\n"
             "• Two languages: English / Русский"
         ),
     },
@@ -152,6 +155,7 @@ T = {
         "choose_main_bg": "Выберите цвет основного фона",
         "choose_txt": "Выберите цвет текста", "no_caption": "(без подписи)",
         "original": "оригинал", "tierlist": "ТИРЛИСТ",
+        "exporting": "Экспорт...",
         "about_text": (
             "Easy-Tier-List-Plus\n"
             "Автор оригинала: Akash Bora\n"
@@ -166,14 +170,34 @@ T = {
             "• Сохранение тирлиста в один .tierlist (Base64 внутри)\n"
             "• Горизонтальная прокрутка внутри каждой категории\n"
             "• Перетаскивание элементов между категориями (Drag & Drop)\n"
+            "• Удаление элементов правым кликом или клавишей Del\n"
+            "• Экспорт ВСЕГО тирлиста (все категории) в PNG\n"
             "• Ползунок глобального размера изображений\n"
             "• Настройка шрифта (семейство, размер, жирный, курсив, подчёркнутый)\n"
             "• Настройка цветовой схемы (категории / фон / текст)\n"
-            "• Экспорт скриншота в PNG\n"
             "• Два языка: English / Русский"
         ),
     },
 }
+
+
+def pick_color(title, initial=None):
+    result = colorchooser.askcolor(color=initial, title=title)
+    if result and result[1]:
+        return result[1]
+    return None
+
+
+def image_is_black(img, threshold=10):
+    try:
+        small = img.convert("RGB").resize((40, 40))
+        data = small.tobytes()
+        if not data:
+            return True
+        avg = sum(data) / len(data)
+        return avg < threshold
+    except:
+        return False
 
 
 class CTk(customtkinter.CTk, TkinterDnD.DnDWrapper):
@@ -196,14 +220,17 @@ class App(CTk):
         self.lang = "en"
 
         self.drag_active = False
+        self.drag_pending = False
         self.drag_item = None
         self.drag_clone = None
         self.drag_widget = None
+        self.drag_start_x = 0
+        self.drag_start_y = 0
 
         self.protocol("WM_DELETE_WINDOW", self.ask_leave)
 
-        self.bind("<B1-Motion>", self.on_drag_motion)
-        self.bind("<ButtonRelease-1>", self.on_drag_release)
+        self.bind("<B1-Motion>", self.on_drag_motion, add="+")
+        self.bind("<ButtonRelease-1>", self.on_drag_release, add="+")
 
         self.frame_color = self._apply_appearance_mode(
             customtkinter.ThemeManager.theme["CTkFrame"]["top_fg_color"])
@@ -229,10 +256,10 @@ class App(CTk):
 
         self.create_menu()
 
-        self.main_scroll = customtkinter.CTkScrollableFrame(self, fg_color="transparent")
+        self.main_scroll = customtkinter.CTkScrollableFrame(self, fg_color=self.frame_color2)
         self.main_scroll.pack(padx=10, pady=10, fill="both", expand=True)
 
-        self.bg_frame = customtkinter.CTkFrame(self.main_scroll, fg_color="transparent")
+        self.bg_frame = customtkinter.CTkFrame(self.main_scroll, fg_color=self.frame_color2)
         self.bg_frame.pack(fill="both", expand=True)
 
         for i in self.blocks:
@@ -243,7 +270,7 @@ class App(CTk):
 
         self.content_frame = customtkinter.CTkScrollableFrame(
             self.main_scroll, height=150, orientation="horizontal",
-            label_text=self.t("tierlist"))
+            label_text=self.t("tierlist"), fg_color=self.frame_color2)
         self.content_frame.pack(fill="x", pady=(5, 0))
         self.blocks["ALL"]["frame"] = self.content_frame
         self.blocks["ALL"]["scroll"] = self.content_frame
@@ -596,16 +623,96 @@ class App(CTk):
                       message=f"{self.t('saved_tierlist')}{save_file}", icon="check")
 
     def export_image(self):
-        save_file = filedialog.asksaveasfilename(initialfile="tierlist", defaultextension=".png",
-                                                 filetypes=[("Images", ["*.png", "*.jpg", "*.jpeg"]),
-                                                            ("All files", "*.*")])
-        if save_file:
-            points = (self.bg_frame.winfo_rootx(), self.bg_frame.winfo_rooty(),
-                      self.bg_frame.winfo_rootx() + self.bg_frame.winfo_width(),
-                      self.bg_frame.winfo_rooty() + self.bg_frame.winfo_height())
-            ImageGrab.grab().crop(points).save(save_file)
+        save_file = filedialog.asksaveasfilename(
+            initialfile="tierlist",
+            defaultextension=".png",
+            filetypes=[("PNG", "*.png"), ("JPG", "*.jpg"), ("All files", "*.*")]
+        )
+        if not save_file:
+            return
+        self.after(500, lambda: self._capture_full(save_file))
+
+    def _capture_full(self, save_file):
+        old_geom = self.geometry()
+        old_x = self.winfo_x()
+        old_y = self.winfo_y()
+        try:
+            self.update_idletasks()
+            self.update()
+
+            self.deiconify()
+            self.lift()
+            self.focus_force()
+            self.attributes("-topmost", True)
+
+            needed = 0
+            for f in self.frame_data:
+                needed += f.winfo_reqheight() + 6
+            needed += self.content_frame.winfo_reqheight() + 30
+            needed += 100
+
+            screen_w = self.winfo_screenwidth()
+            screen_h = self.winfo_screenheight()
+
+            new_h = min(needed, screen_h - 60)
+            new_w = min(1000, screen_w - 40)
+
+            self.geometry(f"{new_w}x{new_h}+{old_x}+{old_y}")
+
+            for _ in range(12):
+                self.update_idletasks()
+                self.update()
+                time.sleep(0.05)
+
+            try:
+                self.main_scroll._parent_canvas.yview_moveto(0)
+            except:
+                pass
+            for _ in range(6):
+                self.update_idletasks()
+                self.update()
+                time.sleep(0.03)
+
+            x1 = self.bg_frame.winfo_rootx()
+            y1 = self.bg_frame.winfo_rooty()
+            w = self.bg_frame.winfo_width()
+            h = self.bg_frame.winfo_height()
+            x2 = x1 + w
+            y2 = y1 + h
+
+            img = None
+            try:
+                img = ImageGrab.grab(bbox=(x1, y1, x2, y2), all_screens=True)
+            except TypeError:
+                img = ImageGrab.grab(bbox=(x1, y1, x2, y2))
+
+            if img is None or image_is_black(img):
+                full = None
+                try:
+                    full = ImageGrab.grab(all_screens=True)
+                except TypeError:
+                    full = ImageGrab.grab()
+                if full is not None:
+                    img = full.crop((x1, y1, x2, y2))
+
+            self.attributes("-topmost", False)
+            self.geometry(old_geom)
+            self.update_idletasks()
+            self.update()
+
+            if img is None:
+                raise Exception("ImageGrab returned None")
+
+            img.save(save_file)
             CTkMessagebox(self, title=self.t("done"),
                           message=f"{self.t('saved_png')}{save_file}", icon="check")
+        except Exception as e:
+            try:
+                self.attributes("-topmost", False)
+                self.geometry(old_geom)
+            except:
+                pass
+            CTkMessagebox(self, title=self.t("error"), message=str(e), icon="cancel")
 
     def edit_content(self):
         content = []
@@ -625,16 +732,16 @@ class App(CTk):
             use_original = tkinter.BooleanVar(value=False)
             custom_size = tkinter.IntVar(value=100)
 
-            chk = customtkinter.CTkCheckBox(dialog, text=self.t("orig_size"), variable=use_original,
-                                            command=lambda: size_entry.configure(
-                                                state="disabled" if use_original.get() else "normal"))
-            chk.pack(pady=10)
-
             frame_size = customtkinter.CTkFrame(dialog, fg_color="transparent")
             frame_size.pack(pady=5)
             customtkinter.CTkLabel(frame_size, text=self.t("size_px")).pack(side="left", padx=5)
             size_entry = customtkinter.CTkEntry(frame_size, width=80, textvariable=custom_size)
             size_entry.pack(side="left")
+
+            chk = customtkinter.CTkCheckBox(dialog, text=self.t("orig_size"), variable=use_original,
+                                            command=lambda: size_entry.configure(
+                                                state="disabled" if use_original.get() else "normal"))
+            chk.pack(pady=10)
 
             result = {"use_original": False, "size": 100}
 
@@ -902,8 +1009,7 @@ class App(CTk):
                 self.after(1000, reset_color)
 
         def change_color():
-            color_box = AskColor(title=self.t("choose_cat_color"))
-            new_color = color_box.get()
+            new_color = pick_color(self.t("choose_cat_color"), color.cget("fg_color"))
             if new_color:
                 color.configure(fg_color=new_color)
 
@@ -947,7 +1053,7 @@ class App(CTk):
         button.pack(fill="y", side="left", padx=(5, 5))
 
         scroll_frame = customtkinter.CTkScrollableFrame(outer_frame, orientation="horizontal",
-                                                        fg_color="transparent")
+                                                        fg_color=self.frame_color)
         scroll_frame.pack(side="left", fill="both", expand=True, padx=(0, 5), pady=5)
 
         self.blocks[text]["frame"] = outer_frame
@@ -1011,22 +1117,47 @@ class App(CTk):
             f.pack_forget()
             f.pack(fill="x", pady=3, padx=0)
 
+    def _click_item(self, event, widget, clone, item):
+        try:
+            widget.focus_set()
+        except:
+            pass
+        self.start_drag(event, widget, clone, item)
+
     def start_drag(self, event, widget, clone, item):
-        self.drag_active = True
+        self.drag_pending = True
+        self.drag_active = False
         self.drag_item = item
         self.drag_clone = clone
         self.drag_widget = widget
-        x = event.x_root - self.winfo_rootx() - 40
-        y = event.y_root - self.winfo_rooty() - 40
-        clone.place(x=x, y=y)
-        clone.lift()
+        self.drag_start_x = event.x_root
+        self.drag_start_y = event.y_root
 
     def on_drag_motion(self, event):
+        if not self.drag_pending:
+            return
         if not self.drag_active:
+            dx = abs(event.x_root - self.drag_start_x)
+            dy = abs(event.y_root - self.drag_start_y)
+            if dx < 5 and dy < 5:
+                return
+            self.drag_active = True
+            x = event.x_root - self.winfo_rootx() - 40
+            y = event.y_root - self.winfo_rooty() - 40
+            try:
+                self.drag_clone.place(x=x, y=y)
+                self.drag_clone.lift()
+            except:
+                pass
+
+        if self.drag_clone is None:
             return
         x = event.x_root - self.winfo_rootx() - 40
         y = event.y_root - self.winfo_rooty() - 40
-        self.drag_clone.place(x=x, y=y)
+        try:
+            self.drag_clone.place(x=x, y=y)
+        except:
+            pass
 
         for i in self.frame_data:
             i.configure(border_width=0)
@@ -1039,10 +1170,20 @@ class App(CTk):
                 break
 
     def on_drag_release(self, event):
-        if not self.drag_active:
-            return
+        was_active = self.drag_active
+        self.drag_pending = False
         self.drag_active = False
-        self.drag_clone.place_forget()
+
+        if not was_active:
+            self.drag_item = None
+            self.drag_clone = None
+            self.drag_widget = None
+            return
+
+        try:
+            self.drag_clone.place_forget()
+        except:
+            pass
         for i in self.frame_data:
             i.configure(border_width=0)
 
@@ -1166,7 +1307,12 @@ class App(CTk):
             clone = customtkinter.CTkLabel(self, text=text, font=self.global_font,
                                            width=self.thumb_size, height=60,
                                            wraplength=self.thumb_size, justify="center")
-            widget = label
+
+            label.bind("<ButtonPress-1>",
+                       lambda e, w=label, c=clone, it=item: self._click_item(e, w, c, it))
+            label.bind("<Button-3>", lambda e, it=item: self.show_item_menu(e, it))
+            label.bind("<Button-2>", lambda e, it=item: self.show_item_menu(e, it))
+            label.bind("<Delete>", lambda e, w=label, it=item, c=clone: self.delete_item(w, it, c))
         else:
             path = item.get("path", "")
             caption = item.get("caption", "")
@@ -1224,26 +1370,20 @@ class App(CTk):
 
             clone = customtkinter.CTkLabel(self, image=img, text=None,
                                            width=display_size[0], height=display_size[1])
-            widget = container
 
-            img_label.bind("<ButtonPress-1>",
-                           lambda e, w=container, c=clone, it=item: self.start_drag(e, w, c, it))
-            cap_label.bind("<ButtonPress-1>",
-                           lambda e, w=container, c=clone, it=item: self.start_drag(e, w, c, it))
-            container.bind("<ButtonPress-1>",
-                           lambda e, w=container, c=clone, it=item: self.start_drag(e, w, c, it))
+            for w in (container, img_label, cap_label):
+                w.bind("<ButtonPress-1>",
+                       lambda e, ww=container, c=clone, it=item: self._click_item(e, ww, c, it))
+                w.bind("<Button-3>", lambda e, it=item: self.show_item_menu(e, it))
+                w.bind("<Button-2>", lambda e, it=item: self.show_item_menu(e, it))
+                w.bind("<Delete>",
+                       lambda e, ww=container, it=item, c=clone: self.delete_item(ww, it, c))
 
         if platform.startswith("win") and pywinstyles is not None:
             try:
                 pywinstyles.set_opacity(clone, 0.6)
             except:
                 pass
-
-        if self.is_text_item(item):
-            widget.bind("<ButtonPress-1>",
-                        lambda e, w=widget, c=clone, it=item: self.start_drag(e, w, c, it))
-            widget.bind("<Delete>", lambda e, w=widget, it=item, c=clone: self.delete_item(w, it, c))
-            widget.bind("<Button-3>", lambda e, it=item: self.show_item_menu(e, it))
 
     def view_image(self, item):
         if not self.is_image_item(item):
@@ -1295,6 +1435,7 @@ class App(CTk):
         elif self.is_text_item(item):
             menu.add_command(label=self.t("edit_text"),
                              command=lambda: self.edit_text_item(item))
+        menu.add_separator()
         menu.add_command(label=self.t("delete"), command=lambda: self.delete_item_by_data(item))
         menu.post(event.x_root, event.y_root)
 
@@ -1320,11 +1461,6 @@ class App(CTk):
         use_original = tkinter.BooleanVar(value=item.get("use_original", False))
         custom_size = tkinter.IntVar(value=item.get("custom_size", 100) if not use_original.get() else 100)
 
-        chk = customtkinter.CTkCheckBox(dialog, text=self.t("orig_size"), variable=use_original,
-                                        command=lambda: size_entry.configure(
-                                            state="disabled" if use_original.get() else "normal"))
-        chk.pack(pady=10)
-
         frame_size = customtkinter.CTkFrame(dialog, fg_color="transparent")
         frame_size.pack(pady=5)
         customtkinter.CTkLabel(frame_size, text=self.t("size_px")).pack(side="left", padx=5)
@@ -1332,6 +1468,11 @@ class App(CTk):
         size_entry.pack(side="left")
         if use_original.get():
             size_entry.configure(state="disabled")
+
+        chk = customtkinter.CTkCheckBox(dialog, text=self.t("orig_size"), variable=use_original,
+                                        command=lambda: size_entry.configure(
+                                            state="disabled" if use_original.get() else "normal"))
+        chk.pack(pady=10)
 
         def confirm():
             item["use_original"] = use_original.get()
@@ -1367,11 +1508,18 @@ class App(CTk):
         self.refresh_all_items()
 
     def delete_item(self, widget, item, clone):
-        widget.destroy()
-        clone.destroy()
         for cat in self.blocks:
             if item in self.blocks[cat]["content"]:
                 self.blocks[cat]["content"].remove(item)
+                break
+        try:
+            widget.destroy()
+        except:
+            pass
+        try:
+            clone.destroy()
+        except:
+            pass
 
     def dropped_content(self, event):
         dropped_file = event.data.split("{")
@@ -1503,8 +1651,7 @@ class App(CTk):
 
     def adjust_theme(self):
         def change_fg():
-            color_box = AskColor(title=self.t("choose_cat_bg"))
-            new_color = color_box.get()
+            new_color = pick_color(self.t("choose_cat_bg"), self.theme_colors["fg"])
             if not new_color:
                 new_color = self._apply_appearance_mode(
                     customtkinter.ThemeManager.theme["CTkFrame"]["top_fg_color"])
@@ -1514,8 +1661,7 @@ class App(CTk):
             self.update_colors()
 
         def change_bg():
-            color_box = AskColor(title=self.t("choose_main_bg"))
-            new_color = color_box.get()
+            new_color = pick_color(self.t("choose_main_bg"), self.theme_colors["bg"])
             if not new_color:
                 new_color = self.frame_color2
             self.theme_colors["bg"] = new_color
@@ -1523,8 +1669,7 @@ class App(CTk):
             self.update_colors()
 
         def change_txt():
-            color_box = AskColor(title=self.t("choose_txt"))
-            new_color = color_box.get()
+            new_color = pick_color(self.t("choose_txt"), self.theme_colors["txt"])
             if not new_color:
                 new_color = "black"
             self.theme_colors["txt"] = new_color
