@@ -5,3 +5,11 @@ pywinstyles
 ctkmenubar
 ctkmessagebox
 ctkcolorpicker
+customtkinter
+CTkMenuBar
+CTkColorPicker
+CTkMessagebox
+tkinterdnd2
+PIL
+PIL._tkinter_finder
+pywinstyles
